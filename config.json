@@ -1,0 +1,59 @@
+{
+    "mapping_path": "new_test.json",
+    "mapping_out_path": ".",
+    "mapping_prefix": "",
+    "allow_research": true,
+    "keep_columns": [
+        "id",
+        "geometry",
+        "validated_geometry",
+        "member_id"
+    ],
+    "tables": {
+        "admin": [
+            "test/osm_admin.sld"
+        ],
+        "aeroways": [
+            "ignore"
+        ],
+        "amenities": [
+            "ignore"
+        ],
+        "barrierpoints": [
+            "ignore"
+        ],
+        "barrierways": [
+            "ignore"
+        ],
+        "buildings": [
+            "test/osm_buildings.sld"
+        ],
+        "housenumbers": [
+            "ignore"
+        ],
+        "housenumbers_interpolated": [
+            "ignore"
+        ],
+        "landusages": [
+            "test/osm_landusages.sld"
+        ],
+        "places": [
+            "test/osm_places.sld"
+        ],
+        "roads": [
+            "test/osm_roads.sld"
+        ],
+        "transport_areas": [
+            "ignore"
+        ],
+        "transport_points": [
+            "ignore"
+        ],
+        "waterareas": [
+            "test/osm_waterareas.sld"
+        ],
+        "waterways": [
+            "test/osm_waterways.sld"
+        ]
+    }
+}
