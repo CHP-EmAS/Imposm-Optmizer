@@ -174,14 +174,14 @@ func (s *Parser) searchSLDColumnNamesRecursiv(mappingFileData []byte, columnList
 			}
 			//search after rule tag to check if the rule filter uses the mapping value collumn
 		} else if n.XMLName.Local == "Rule" {
-
 			newRule := Rule{}
-			err := xml.Unmarshal(n.ParentNode.Content, &newRule)
+			err := xml.Unmarshal(n.Content, &newRule)
 
 			if err != nil {
 				fmt.Println("Parsing Error: " + err.Error())
 			} else {
 				ruleList = append(ruleList, newRule)
+				fmt.Println(newRule.Name + ": " + string(newRule.Filter.XMLContent))
 			}
 		}
 
@@ -244,7 +244,7 @@ func checkIfRuleFiltersMappingTypes(rule *Rule, mappingValueColumnName string) (
 					for _, adjacentNode := range n.ParentNode.Nodes {
 						if adjacentNode.XMLName.Local == "Literal" {
 
-							fmt.Println(rule.Name + ": " + string(adjacentNode.Content))
+							//fmt.Println(rule.Name + ": " + string(adjacentNode.Content))
 
 						}
 					}

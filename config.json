@@ -1,6 +1,6 @@
 {
-    "mapping_path": "new_test.json",
-    "mapping_out_path": ".",
+    "mapping_path": "test/test.json",
+    "mapping_out_path": "test/",
     "mapping_prefix": "",
     "allow_research": true,
     "keep_columns": [
