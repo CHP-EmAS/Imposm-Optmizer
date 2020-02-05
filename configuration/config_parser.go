@@ -171,6 +171,7 @@ func InitConfigFile() error {
 		}
 	}
 
+	//input sld's for generalized tables
 	mappingGeneralizedTables := mappingParser.GetGeneralizedTableNames()
 
 	generalizedTableMap := make(map[string][]string)
