@@ -1,14 +1,14 @@
 {
-    "mapping_path": "test/mapping.yaml",
+    "mapping_path": "test/mapping.json",
     "mapping_out_path": "test/",
     "mapping_prefix": "new_",
+    "allow_research": true,
     "keep_columns": [
+        "id",
         "geometry",
         "validated_geometry",
-        "id",
         "member_id"
     ],
-    "allow_research": true,
     "tables": {
         "admin": [
             "test/osm_admin.sld"
@@ -50,36 +50,11 @@
             "ignore"
         ],
         "waterareas": [
-            "test/osm_waterareas.sld"
+            "test/osm_waterareas.sld",
+            "test/osm_waterpoly.sld"
         ],
         "waterways": [
             "test/osm_waterways.sld"
-        ]
-    },
-    "generalized_tables": {
-        "landusages_gen0": [
-            "ignore"
-        ],
-        "landusages_gen1": [
-            "ignore"
-        ],
-        "roads_gen0": [
-            "ignore"
-        ],
-        "roads_gen1": [
-            "ignore"
-        ],
-        "waterareas_gen0": [
-            "ignore"
-        ],
-        "waterareas_gen1": [
-            "ignore"
-        ],
-        "waterways_gen0": [
-            "ignore"
-        ],
-        "waterways_gen1": [
-            "ignore"
         ]
     }
 }

@@ -172,7 +172,7 @@ func (m *mappingParser) RebuildMappingStructure(parsedSLDs map[string][]sld.Pars
 		requiredColumnList := combinedRequirements.RequiredColumnList
 		requiredMappingValues := combinedRequirements.RequiredMappingValues
 
-		buildColumnList(table, newTable, requiredColumnList, requiredMappingValues, m.allowResearch, m.requiredColumnTypes)
+		buildColumnList(table, newTable, requiredColumnList, m.allowResearch, m.requiredColumnTypes)
 
 		if len(requiredMappingValues) > 0 && !useAllMappingTypes {
 			buildMappingValueList(table, newTable, requiredMappingValues, m.allowResearch)
@@ -214,16 +214,7 @@ func appendRequirements(source *sld.TableRequirements, new sld.ParsedSLD) {
 
 	//add all found required types
 	for _, value := range new.Requirements.RequiredMappingValues {
-
-		found := false
-		for _, rType := range source.RequiredMappingValues {
-			if value.Name == rType.Name {
-				found = true
-				break
-			}
-		}
-
-		if !found {
+		if !functions.StringInSlice(value, source.RequiredMappingValues) {
 			source.RequiredMappingValues = append(source.RequiredMappingValues, value)
 		}
 	}
@@ -244,6 +235,23 @@ func (m *mappingParser) GetTableNames() []string {
 	var tableIndex = 0
 
 	for key := range m.mappingRoot.Tabels {
+		tables[tableIndex] = key
+		tableIndex++
+	}
+
+	return tables
+}
+
+func (m *mappingParser) GetGeneralizedTableNames() []string {
+	if m.successfullPasing == false {
+		m.GetMappingContent()
+	}
+
+	var tables []string = make([]string, len(m.mappingRoot.GeneralizedTables))
+
+	var tableIndex = 0
+
+	for key := range m.mappingRoot.GeneralizedTables {
 		tables[tableIndex] = key
 		tableIndex++
 	}
@@ -324,7 +332,7 @@ func guessColumnType(literals []string) string {
 	return "string"
 }
 
-func buildColumnList(rootTable Table, newTable *Table, requiredColumnList []sld.RequiredColumn, requiredMappingValues []sld.RequiredMappingValue, allowResearch bool, requiredColumnTypes []string) {
+func buildColumnList(rootTable Table, newTable *Table, requiredColumnList []sld.RequiredColumn, allowResearch bool, requiredColumnTypes []string) {
 	if len(requiredColumnList) > 0 {
 
 		newTable.Columns = make([]TableColumn, 0)
@@ -382,7 +390,7 @@ func buildColumnList(rootTable Table, newTable *Table, requiredColumnList []sld.
 	}
 }
 
-func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValues []sld.RequiredMappingValue, allowResearch bool) {
+func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValues []string, allowResearch bool) {
 
 	if len(rootTable.Mapping) > 0 {
 
@@ -392,15 +400,7 @@ func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValu
 		for class, keyList := range rootTable.Mapping {
 			for _, key := range keyList {
 
-				found := false
-				for _, rValue := range requiredMappingValues {
-					if rValue.Name == key {
-						found = true
-						break
-					}
-				}
-
-				if found {
+				if functions.StringInSlice(key, requiredMappingValues) {
 					newTable.Mapping[class] = append(newTable.Mapping[class], key)
 
 					usedRequiredMappingTypes = append(usedRequiredMappingTypes, key)
@@ -411,13 +411,13 @@ func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValu
 		}
 
 		for _, rType := range requiredMappingValues {
-			if !functions.StringInSlice(rType.Name, usedRequiredMappingTypes) {
+			if !functions.StringInSlice(rType, usedRequiredMappingTypes) {
 
-				fmt.Println(`- WARNING: Mapping Value "` + rType.Name + `" is required in SLD, but is not defined in mapping!`)
+				fmt.Println(`- WARNING: Mapping Value "` + rType + `" is required in SLD, but is not defined in mapping!`)
 
 				if allowResearch {
-					fmt.Println(`-  Searching for Tag "` + rType.Name + `"...`)
-					findKeys := tagfinder.FindTagKey(rType.Name)
+					fmt.Println(`-  Searching for Tag "` + rType + `"...`)
+					findKeys := tagfinder.FindTagKey(rType)
 
 					if len(findKeys) == 1 {
 						fmt.Print("-  The following keyword was found: ")
@@ -431,8 +431,8 @@ func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValu
 					}
 
 					for _, newKey := range findKeys {
-						fmt.Println(`- Mapping Value "` + rType.Name + `" added with key/class value "` + newKey + `"`)
-						newTable.Mapping[newKey] = append(newTable.Mapping[newKey], rType.Name)
+						fmt.Println(`- Mapping Value "` + rType + `" added with key/class value "` + newKey + `"`)
+						newTable.Mapping[newKey] = append(newTable.Mapping[newKey], rType)
 					}
 				}
 			}
@@ -451,15 +451,7 @@ func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValu
 
 				for _, key := range keyList {
 
-					found := false
-					for _, rValue := range requiredMappingValues {
-						if rValue.Name == key {
-							found = true
-							break
-						}
-					}
-
-					if found {
+					if functions.StringInSlice(key, requiredMappingValues) {
 						newMapping.Mapping[class] = append(newMapping.Mapping[class], key)
 
 						usedRequiredMappingTypes = append(usedRequiredMappingTypes, key)
@@ -472,13 +464,13 @@ func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValu
 			}
 
 			for _, rType := range requiredMappingValues {
-				if !functions.StringInSlice(rType.Name, usedRequiredMappingTypes) {
+				if !functions.StringInSlice(rType, usedRequiredMappingTypes) {
 
-					fmt.Println(`- WARNING: Mapping Value "` + rType.Name + `" is required in SLD, but is not defined in mapping!`)
+					fmt.Println(`- WARNING: Mapping Value "` + rType + `" is required in SLD, but is not defined in mapping!`)
 
 					if allowResearch {
-						fmt.Println(`-  Searching for Tag "` + rType.Name + `"...`)
-						findKeys := tagfinder.FindTagKey(rType.Name)
+						fmt.Println(`-  Searching for Tag "` + rType + `"...`)
+						findKeys := tagfinder.FindTagKey(rType)
 
 						if len(findKeys) == 1 {
 							fmt.Print("-  The following keyword was found: ")
@@ -492,8 +484,8 @@ func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValu
 						}
 
 						for _, newKey := range findKeys {
-							fmt.Println(`- Mapping Value "` + rType.Name + `" added with key/class value "` + newKey + `"`)
-							newTable.Mappings[mainClass].Mapping[newKey] = append(newTable.Mappings[mainClass].Mapping[newKey], rType.Name)
+							fmt.Println(`- Mapping Value "` + rType + `" added with key/class value "` + newKey + `"`)
+							newTable.Mappings[mainClass].Mapping[newKey] = append(newTable.Mappings[mainClass].Mapping[newKey], rType)
 						}
 					}
 				}

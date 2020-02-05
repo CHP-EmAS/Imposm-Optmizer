@@ -57,20 +57,21 @@ func (s *Parser) ExtractRequirements(mappingValueColumnName string) (ParsedSLD, 
 		}
 	}
 
-	//Parsing required colums from all UserStyles>FeatureTypeStyles>Rules in Filter and Symbolizer Tags
 	columnList := make([]RequiredColumn, 0)
-	mappingTypeList := make([]RequiredMappingValue, 0)
+	mappingTypeList := make([]string, 0)
 
-	err := s.searchSLDColumnNamesRecursiv(s.fileByteArray, &columnList, &mappingTypeList, mappingValueColumnName)
+	scaleDenominator := ScaleDenominator{-1, -1}
+
+	err := s.searchSLDRecursiv(s.fileByteArray, &columnList, &mappingTypeList, &scaleDenominator, mappingValueColumnName)
 
 	if err != nil {
 		return ParsedSLD{}, err
 	}
 
-	return ParsedSLD{s.filePath, TableRequirements{columnList, mappingTypeList}, s.useAllMappingTypes}, nil
+	return ParsedSLD{s.filePath, TableRequirements{columnList, mappingTypeList}, scaleDenominator, s.useAllMappingTypes}, nil
 }
 
-func (s *Parser) searchSLDColumnNamesRecursiv(mappingFileData []byte, columnList *[]RequiredColumn, mappingTypeList *[]RequiredMappingValue, mappingValueColumnName string) error {
+func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]RequiredColumn, mappingTypeList *[]string, scaleDenominator *ScaleDenominator, mappingValueColumnName string) error {
 	//init buffer and decoder for unmarshal recursiv xml
 	buf := bytes.NewBuffer(mappingFileData)
 	dec := xml.NewDecoder(buf)
@@ -113,17 +114,10 @@ func (s *Parser) searchSLDColumnNamesRecursiv(mappingFileData []byte, columnList
 						//add Literal to mappingTypeList if columnname matches the mapping value columnname
 						if newColumnName == mappingValueColumnName {
 
-							found := false
-							for _, mappingType := range *mappingTypeList {
-								if mappingType.Name == newLiteralName {
-									found = true
-									break
-								}
+							if !functions.StringInSlice(newLiteralName, *mappingTypeList) {
+								*mappingTypeList = append(*mappingTypeList, newLiteralName)
 							}
 
-							if !found {
-								*mappingTypeList = append(*mappingTypeList, RequiredMappingValue{newLiteralName, TypeScaleDenominator{-1, -1}})
-							}
 						}
 					}
 				}
@@ -172,16 +166,22 @@ func (s *Parser) searchSLDColumnNamesRecursiv(mappingFileData []byte, columnList
 
 				}
 			}
-			//search after rule tag to check if the rule filter uses the mapping value collumn
-		} else if n.XMLName.Local == "Rule" {
+
+		} else if n.XMLName.Local == "Rule" { //extract all rule tags
+
+			copyByteStream := n.Content
+
+			//add beginning and end tag to the rule content, for correct decoding the rule
+			copyByteStream = append([]byte("<Rule>"), copyByteStream...)
+			copyByteStream = append(copyByteStream, "</Rule>"...)
+
 			newRule := Rule{}
-			err := xml.Unmarshal(n.Content, &newRule)
+			err := xml.Unmarshal(copyByteStream, &newRule)
 
 			if err != nil {
 				fmt.Println("Parsing Error: " + err.Error())
 			} else {
 				ruleList = append(ruleList, newRule)
-				fmt.Println(newRule.Name + ": " + string(newRule.Filter.XMLContent))
 			}
 		}
 
@@ -189,10 +189,23 @@ func (s *Parser) searchSLDColumnNamesRecursiv(mappingFileData []byte, columnList
 		return true
 	})
 
+	//search after rule tag to check if the rule filter uses the mapping value collumn
+	//calculate the minimum and maximum scale denominator of all mapping values used
 	foundRule := (len(ruleList) > 0)
 	ruleFiltersMappingType := true
 
 	for _, rule := range ruleList {
+
+		if rule.MaxScale == 0 {
+			scaleDenominator.MaxScaleDenominator = -2
+		} else if rule.MaxScale > scaleDenominator.MaxScaleDenominator && scaleDenominator.MaxScaleDenominator != -2 {
+			scaleDenominator.MaxScaleDenominator = rule.MaxScale
+		}
+
+		if rule.MinScale < scaleDenominator.MinScaleDenominator || scaleDenominator.MinScaleDenominator == -1 {
+			scaleDenominator.MinScaleDenominator = rule.MinScale
+		}
+
 		mappingTypeFound, err := checkIfRuleFiltersMappingTypes(&rule, mappingValueColumnName)
 
 		if err != nil {
@@ -205,6 +218,7 @@ func (s *Parser) searchSLDColumnNamesRecursiv(mappingFileData []byte, columnList
 		}
 	}
 
+	//set sld filter status
 	if foundRule && ruleFiltersMappingType {
 		s.useAllMappingTypes = false
 	} else {
@@ -217,11 +231,16 @@ func (s *Parser) searchSLDColumnNamesRecursiv(mappingFileData []byte, columnList
 func checkIfRuleFiltersMappingTypes(rule *Rule, mappingValueColumnName string) (bool, error) {
 
 	if rule.Filter.XMLContent == nil {
-		return false, fmt.Errorf("Rule XML content is empty")
+
+		if rule.TextSymbolizer == nil {
+			return false, nil
+		}
+
+		return true, nil
 	}
 
 	//init buffer and decoder for unmarshal recursiv xml
-	buf := bytes.NewBuffer(rule.Filter.XMLContent)
+	buf := bytes.NewBuffer(rule.Filter.XMLContent) //check only the filter tag/content
 	dec := xml.NewDecoder(buf)
 
 	//start node
@@ -236,21 +255,8 @@ func checkIfRuleFiltersMappingTypes(rule *Rule, mappingValueColumnName string) (
 	walk([]recursiveNode{n}, &n, func(n recursiveNode) bool {
 		if n.XMLName.Local == "PropertyName" {
 			if string(n.Content) == mappingValueColumnName {
-
-				//search all Literals that belongs to the PropertyName
-				if n.ParentNode != nil {
-
-					//search the parentnode for tag "Literal"
-					for _, adjacentNode := range n.ParentNode.Nodes {
-						if adjacentNode.XMLName.Local == "Literal" {
-
-							//fmt.Println(rule.Name + ": " + string(adjacentNode.Content))
-
-						}
-					}
-				}
-
 				foundMappingFilter = true
+				return false
 			}
 		}
 

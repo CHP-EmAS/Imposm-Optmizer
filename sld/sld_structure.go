@@ -27,6 +27,11 @@ type Rule struct {
 	RasterSymbolizer  []Symbolizer `xml:"RasterSymbolizer,omitempty"`
 }
 
+//FeatureTypeStyle --
+type FeatureTypeStyle struct {
+	Rules []Rule `xml:"Rule,flow,omitempty"`
+}
+
 //VendorOption contains the name and value of a VendorOption from an SLD
 type VendorOption struct {
 	OptionName string `xml:"name,attr"`
@@ -35,15 +40,10 @@ type VendorOption struct {
 
 //########### Parser structures ###########//
 
-type TypeScaleDenominator struct {
+//ScaleDenominator contains information of the scale denominator of a specific sld file
+type ScaleDenominator struct {
 	MinScaleDenominator int
 	MaxScaleDenominator int
-}
-
-//RequiredMappingValue contains the name and key values of a mapping class
-type RequiredMappingValue struct {
-	Name  string
-	Scale TypeScaleDenominator
 }
 
 //RequiredColumn contains the key name and key values of a mapping class
@@ -55,15 +55,16 @@ type RequiredColumn struct {
 //TableRequirements combine all required table columns and mapping values
 type TableRequirements struct {
 	RequiredColumnList    []RequiredColumn
-	RequiredMappingValues []RequiredMappingValue
+	RequiredMappingValues []string
 }
 
 //ParsedSLD contains necessary information about the parsed SLD file
 //FileName = the path to the parsed SLD file
 //Requirements = List of the required table columns/mapping values
-//UseAllMappingTypes = If all values are to be used
+//UseAllMappingTypes = If all mapping values are to be used, is caused by missing filtering of the mapping column
 type ParsedSLD struct {
 	FileName           string
 	Requirements       TableRequirements
+	Scale              ScaleDenominator
 	UseAllMappingTypes bool
 }

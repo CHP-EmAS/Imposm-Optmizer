@@ -15,12 +15,13 @@ const ConfigFile = "config.json"
 var parsedConfig config
 
 type config struct {
-	MappingFilePath string              `json:"mapping_path"`
-	MappingOutPath  string              `json:"mapping_out_path"`
-	MappingPrefix   string              `json:"mapping_prefix"`
-	KeepColumns     []string            `json:"keep_columns,flow,omitempty"`
-	AllowResearch   bool                `json:"allow_research"`
-	TableList       map[string][]string `json:"tables,flow,omitempty"`
+	MappingFilePath      string              `json:"mapping_path"`
+	MappingOutPath       string              `json:"mapping_out_path"`
+	MappingPrefix        string              `json:"mapping_prefix"`
+	KeepColumns          []string            `json:"keep_columns,flow,omitempty"`
+	AllowResearch        bool                `json:"allow_research"`
+	TableList            map[string][]string `json:"tables,flow,omitempty"`
+	GeneralizedTableList map[string][]string `json:"generalized_tables,flow,omitempty"`
 }
 
 func saveConfigFile(conf config) error {
@@ -40,11 +41,34 @@ func InitConfigFile() error {
 	fmt.Println("***************** Initialization ******************")
 	fmt.Println()
 
-	fmt.Print("Path to mapping file: ")
+	foundOldConfig := false
+	oldConfig := config{}
+
+	if functions.FileExists(ConfigFile) {
+		//check if config file already exists
+		configError := ParseConfig(ConfigFile)
+		oldConfig = GetConfiguration()
+
+		if configError == nil {
+			foundOldConfig = true
+		}
+	}
+
+	//Path to mapping file input
+	if foundOldConfig {
+		fmt.Print("Path to mapping file [" + oldConfig.MappingFilePath + "]: ")
+	} else {
+		fmt.Print("Path to mapping file: ")
+	}
+
 	var pathToMapping string
 	for {
 
 		fmt.Scanln(&pathToMapping)
+
+		if foundOldConfig && pathToMapping == "" {
+			pathToMapping = oldConfig.MappingFilePath
+		}
 
 		if !functions.FileExists(pathToMapping) {
 			fmt.Print("File could not be found, please enter a correct path to the file: ")
@@ -53,10 +77,20 @@ func InitConfigFile() error {
 		}
 	}
 
-	fmt.Print("Target folder of the new mapping file: ")
+	//new mapping file output directory input
+	if foundOldConfig {
+		fmt.Print("Target folder of the new mapping file [" + oldConfig.MappingOutPath + "]: ")
+	} else {
+		fmt.Print("Target folder of the new mapping file: ")
+	}
+
 	var pathOutMapping string
 	for {
 		fmt.Scanln(&pathOutMapping)
+
+		if foundOldConfig && pathOutMapping == "" {
+			pathOutMapping = oldConfig.MappingOutPath
+		}
 
 		if !functions.DirExists(pathOutMapping) {
 			fmt.Print("Directory could not be found, please enter a correct path: ")
@@ -65,25 +99,46 @@ func InitConfigFile() error {
 		}
 	}
 
-	fmt.Print("What prefix should the new mapping file have? If not specified and destination folder is the same, the file will be overwritten!: ")
+	//new mapping file prefix imput
+	if foundOldConfig {
+		fmt.Print("What prefix should the new mapping file have? If not specified and destination folder is the same, the file will be overwritten! [" + oldConfig.MappingPrefix + "]: ")
+	} else {
+		fmt.Print("What prefix should the new mapping file have? If not specified and destination folder is the same, the file will be overwritten!: ")
+	}
 	var prefix string
 	fmt.Scanln(&prefix)
+	if foundOldConfig && prefix == "" {
+		prefix = oldConfig.MappingPrefix
+	}
 
+	//allow research via api input yes or no
 	fmt.Print("If certain information about column types or keywords is missing, an API(http://tagfinder.herokuapp.com/apidoc) is used to research it. Should this be allowed? (Y/N): ")
 	var ans string
 	fmt.Scanln(&ans)
+
+	if foundOldConfig && ans == "" {
+		if oldConfig.AllowResearch {
+			ans = "y"
+		}
+	}
 
 	allowResearch := false
 	if strings.Compare("y", strings.ToLower(ans)) == 0 || strings.Compare("yes", strings.ToLower(ans)) == 0 {
 		allowResearch = true
 	}
 
+	//standart required columns -- no input, must be changed in json file
 	requiredColumnTypes := []string{"geometry", "validated_geometry", "id", "member_id"}
 
+	if foundOldConfig {
+		requiredColumnTypes = oldConfig.KeepColumns
+	}
+
+	//input sld's for normal tables
 	mappingParser := mapping.New(pathToMapping, allowResearch, requiredColumnTypes)
 	mappingTables := mappingParser.GetTableNames()
 
-	tableList := make(map[string][]string)
+	tableMap := make(map[string][]string)
 
 	for _, tableName := range mappingTables {
 
@@ -101,22 +156,57 @@ func InitConfigFile() error {
 			} else if !functions.FileExists(fileName) {
 				fmt.Println(`File "` + fileName + `" not found!`)
 			} else {
-				tableList[tableName] = append(tableList[tableName], fileName)
+				tableMap[tableName] = append(tableMap[tableName], fileName)
 			}
 		}
 
-		if len(tableList[tableName]) <= 0 {
+		if len(tableMap[tableName]) <= 0 {
 			fmt.Print(`No files were specified for the table "` + tableName + `", should this table be ignored in the following remapping? (Y/N): `)
 			var ans string
 			fmt.Scanln(&ans)
 
 			if strings.Compare("y", strings.ToLower(ans)) == 0 || strings.Compare("yes", strings.ToLower(ans)) == 0 {
-				tableList[tableName] = append(tableList[tableName], "ignore")
+				tableMap[tableName] = append(tableMap[tableName], "ignore")
 			}
 		}
 	}
 
-	newConf := config{pathToMapping, pathOutMapping, prefix, requiredColumnTypes, allowResearch, tableList}
+	mappingGeneralizedTables := mappingParser.GetGeneralizedTableNames()
+
+	generalizedTableMap := make(map[string][]string)
+
+	for _, tableName := range mappingGeneralizedTables {
+
+		fmt.Println(`Path to the sld file/s that uses the generalized "` + tableName + `" table. Type "END" to exit`)
+
+		for {
+			fmt.Print("-> ")
+
+			var fileName string
+			fmt.Scanln(&fileName)
+
+			if strings.Compare("end", strings.ToLower(fileName)) == 0 ||
+				strings.Compare("exit", strings.ToLower(fileName)) == 0 {
+				break
+			} else if !functions.FileExists(fileName) {
+				fmt.Println(`File "` + fileName + `" not found!`)
+			} else {
+				generalizedTableMap[tableName] = append(generalizedTableMap[tableName], fileName)
+			}
+		}
+
+		if len(generalizedTableMap[tableName]) <= 0 {
+			fmt.Print(`No files were specified for the generalized table "` + tableName + `", should this table be ignored in the following remapping? (Y/N): `)
+			var ans string
+			fmt.Scanln(&ans)
+
+			if strings.Compare("y", strings.ToLower(ans)) == 0 || strings.Compare("yes", strings.ToLower(ans)) == 0 {
+				generalizedTableMap[tableName] = append(generalizedTableMap[tableName], "ignore")
+			}
+		}
+	}
+
+	newConf := config{pathToMapping, pathOutMapping, prefix, requiredColumnTypes, allowResearch, tableMap, generalizedTableMap}
 
 	err := saveConfigFile(newConf)
 

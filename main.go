@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strconv"
 )
 
 func main() {
@@ -26,7 +27,6 @@ func main() {
 	}
 
 	configError := configuration.ParseConfig(configuration.ConfigFile)
-
 	config := configuration.GetConfiguration()
 
 	if configError != nil {
@@ -57,7 +57,9 @@ func main() {
 	mappingParser := mapping.New(config.MappingFilePath, config.AllowResearch, config.KeepColumns)
 	mappingTables := mappingParser.GetTableNames()
 
-	//init table
+	fmt.Println(mappingParser.GetGeneralizedTableNames())
+
+	//init tables
 	tableFilesMap := make(map[string](*list.List))
 	for i := range mappingTables {
 		tableFilesMap[mappingTables[i]] = list.New()
@@ -140,9 +142,17 @@ func main() {
 				fmt.Print(len(newParsedSLD.Requirements.RequiredMappingValues))
 				fmt.Println(" requirements found")
 			}
+
+			maxScale := "∞"
+
+			if newParsedSLD.Scale.MaxScaleDenominator != -2 {
+				maxScale = strconv.Itoa(newParsedSLD.Scale.MaxScaleDenominator)
+			}
+
+			fmt.Println("- required minimum/maximum scaling: " + strconv.Itoa(newParsedSLD.Scale.MinScaleDenominator) + "/" + maxScale)
 		}
 
-		fmt.Println()
+		fmt.Println("")
 
 		comparedTables[tableName] = parsedSLDList
 	}
