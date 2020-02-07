@@ -19,13 +19,14 @@ type mappingParser struct {
 	successfullPasing   bool
 	mappingRoot         Mapping
 	sourceFileType      string
+	forceFiltering      bool
 	allowResearch       bool
 	requiredColumnTypes []string
 }
 
 //New (filePath) createts a new parser object, file path to the mapping file is requiered
-func New(filePath string, allowResearch bool, requiredColumnTypes []string) mappingParser {
-	m := mappingParser{filePath, false, Mapping{}, "", allowResearch, requiredColumnTypes}
+func New(filePath string, allowResearch bool, forceFiltering bool, requiredColumnTypes []string) mappingParser {
+	m := mappingParser{filePath, false, Mapping{}, "", forceFiltering, allowResearch, requiredColumnTypes}
 	return m
 }
 
@@ -92,23 +93,29 @@ func (m *mappingParser) GetMappingContent() Mapping {
 	return m.mappingRoot
 }
 
-func (m *mappingParser) GetMappingColumnNames(tableName string) (string, string) {
+//GetMappingColumnName returns the names of the columns which have the column type "mapping_value" and "mapping_key".
+//tableName: Name of the table from which the values are needed.
+//If the given table is a generalized table, the values of its source table are returned!
+func (m *mappingParser) GetMappingColumnName(tableName string) sld.MappingColumnNames {
 	if m.successfullPasing == false {
 		m.GetMappingContent()
 	}
 
-	var mappingValueColumnName string
-	var mappingKeyColumnName string
+	if m.mappingRoot.GeneralizedTables[tableName] != (GeneralizedTable{}) {
+		tableName = m.GetGeneralizedRootSourceTable(tableName)
+	}
+
+	mappingColumns := sld.MappingColumnNames{}
 
 	for _, column := range m.mappingRoot.Tabels[tableName].Columns {
 		if strings.Compare("mapping_value", column.Type) == 0 {
-			mappingValueColumnName = column.Name
+			mappingColumns.MappingValueColumnName = column.Name
 		} else if strings.Compare("mapping_key", column.Type) == 0 {
-			mappingKeyColumnName = column.Name
+			mappingColumns.MappingKeyColumnName = column.Name
 		}
 	}
 
-	return mappingValueColumnName, mappingKeyColumnName
+	return mappingColumns
 }
 
 func (m *mappingParser) buildMappingFile(newMappingStructure Mapping) []byte {
@@ -169,19 +176,96 @@ func (m *mappingParser) RebuildMappingStructure(parsedSLDs map[string][]sld.Pars
 			}
 		}
 
+		relatedGenTables := m.getRelatedGeneralizedTables(tableName)
+
+		if len(relatedGenTables) > 0 {
+			fmt.Println("- Related generalized tables:", relatedGenTables)
+		}
+
+		for _, relGenTable := range relatedGenTables {
+			for _, comparedTable := range parsedSLDs[relGenTable] {
+				appendRequirements(&combinedRequirements, comparedTable)
+
+				if comparedTable.UseAllMappingTypes {
+					useAllMappingTypes = true
+				}
+			}
+		}
+
 		requiredColumnList := combinedRequirements.RequiredColumnList
 		requiredMappingValues := combinedRequirements.RequiredMappingValues
 
 		buildColumnList(table, newTable, requiredColumnList, m.allowResearch, m.requiredColumnTypes)
 
-		if len(requiredMappingValues) > 0 && !useAllMappingTypes {
+		if len(requiredMappingValues) > 0 && (!useAllMappingTypes || m.forceFiltering) {
 			buildMappingValueList(table, newTable, requiredMappingValues, m.allowResearch)
 		} else {
+			fmt.Println("- Not all filter tags filter a mapping type, therefore all existing mapping types are used!")
+
 			newTable.Mapping = table.Mapping
 			newTable.Mappings = table.Mappings
 		}
 
 		newMappingRoot.Tabels[tableName] = *newTable
+
+		fmt.Println("")
+	}
+
+	for genTableName, table := range m.mappingRoot.GeneralizedTables {
+		fmt.Println(`Building generalized Table "` + genTableName + `"...`)
+
+		newGenTable := new(GeneralizedTable)
+
+		//copy static table data
+		newGenTable.Source = table.Source
+
+		//merge the parsed sld data to a list
+		combinedRequirements := sld.TableRequirements{}
+		useAllMappingTypes := false
+
+		//get the minimum min scale
+		var minScale float64 = -1
+
+		for _, comparedTable := range parsedSLDs[genTableName] {
+			appendRequirements(&combinedRequirements, comparedTable)
+
+			if comparedTable.UseAllMappingTypes {
+				useAllMappingTypes = true
+			}
+
+			if minScale == -1 || minScale > float64(comparedTable.Scale.MinScaleDenominator) {
+				minScale = float64(comparedTable.Scale.MinScaleDenominator)
+			}
+		}
+
+		relatedGenTables := m.getRelatedGeneralizedTables(genTableName)
+
+		if len(relatedGenTables) > 0 {
+			fmt.Println("- Related generalized tables:", relatedGenTables)
+		}
+
+		for _, relGenTable := range relatedGenTables {
+			for _, comparedTable := range parsedSLDs[relGenTable] {
+				appendRequirements(&combinedRequirements, comparedTable)
+
+				if comparedTable.UseAllMappingTypes {
+					useAllMappingTypes = true
+				}
+			}
+		}
+
+		newGenTable.SQLFilter = generateSQLFilter(m.GetMappingColumnName(genTableName), combinedRequirements.RequiredColumnList, combinedRequirements.RequiredMappingValues, (useAllMappingTypes || m.forceFiltering))
+
+		if newGenTable.SQLFilter != "" {
+			fmt.Println("- SQL-Filter: " + newGenTable.SQLFilter)
+		}
+
+		newGenTable.Tolerance = minScale
+		fmt.Println("- Tolerance:", minScale)
+
+		newMappingRoot.GeneralizedTables[genTableName] = *newGenTable
+
+		fmt.Println("")
 	}
 
 	return m.buildMappingFile(*newMappingRoot)
@@ -191,15 +275,7 @@ func appendRequirements(source *sld.TableRequirements, new sld.ParsedSLD) {
 	//add all found required table collumns
 	for _, value := range new.Requirements.RequiredColumnList {
 
-		found := false
-		foundAt := 0
-		for i, rColumn := range source.RequiredColumnList {
-			if value.PropertyName == rColumn.PropertyName {
-				found = true
-				foundAt = i
-				break
-			}
-		}
+		found, foundAt := sld.ColumnInColumnlist(value.PropertyName, source.RequiredColumnList)
 
 		if !found {
 			source.RequiredColumnList = append(source.RequiredColumnList, value)
@@ -259,8 +335,27 @@ func (m *mappingParser) GetGeneralizedTableNames() []string {
 	return tables
 }
 
+func (m *mappingParser) GetGeneralizedRootSourceTable(genTabelName string) string {
+	if m.successfullPasing == false {
+		m.GetMappingContent()
+	}
+
+	genSourceRootTable := genTabelName
+
+	if m.mappingRoot.GeneralizedTables[genSourceRootTable] != (GeneralizedTable{}) {
+		genSourceRootTable = m.mappingRoot.GeneralizedTables[genSourceRootTable].Source
+		genSourceRootTable = m.GetGeneralizedRootSourceTable(genSourceRootTable)
+	}
+
+	return genSourceRootTable
+}
+
 func (m *mappingParser) RemoveTableFromRoot(tableName string) {
 	delete(m.mappingRoot.Tabels, tableName)
+}
+
+func (m *mappingParser) RemoveGeneralizedTableFromRoot(genTableName string) {
+	delete(m.mappingRoot.GeneralizedTables, genTableName)
 }
 
 func guessColumnType(literals []string) string {
@@ -342,15 +437,10 @@ func buildColumnList(rootTable Table, newTable *Table, requiredColumnList []sld.
 
 		for _, column := range rootTable.Columns {
 
-			found := false
-			for _, rColumn := range requiredColumnList {
-				if rColumn.PropertyName == column.Name || functions.StringInSlice(column.Type, requiredColumnTypes) {
-					found = true
-					break
-				}
-			}
+			found, _ := sld.ColumnInColumnlist(column.Name, requiredColumnList)
+			required := found || functions.StringInSlice(column.Type, requiredColumnTypes)
 
-			if found {
+			if required {
 
 				newTable.Columns = append(newTable.Columns, column)
 				usedRequiredColumnList = append(usedRequiredColumnList, column.Name)
@@ -439,11 +529,11 @@ func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValu
 		}
 
 	} else if len(rootTable.Mappings) > 0 {
+
+		newTable.Mappings = make(map[string]TableMapping)
+		usedRequiredMappingTypes := make([]string, 0)
+
 		for mainClass, mappingList := range rootTable.Mappings {
-
-			newTable.Mappings = make(map[string]TableMapping)
-
-			usedRequiredMappingTypes := make([]string, 0)
 			for class, keyList := range mappingList.Mapping {
 
 				newMapping := new(TableMapping)
@@ -453,7 +543,6 @@ func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValu
 
 					if functions.StringInSlice(key, requiredMappingValues) {
 						newMapping.Mapping[class] = append(newMapping.Mapping[class], key)
-
 						usedRequiredMappingTypes = append(usedRequiredMappingTypes, key)
 					} else {
 						fmt.Println(`- Mapping value "` + key + `" excluded in mapping class "` + mainClass + `"`)
@@ -462,34 +551,81 @@ func buildMappingValueList(rootTable Table, newTable *Table, requiredMappingValu
 
 				newTable.Mappings[mainClass] = *newMapping
 			}
+		}
 
-			for _, rType := range requiredMappingValues {
-				if !functions.StringInSlice(rType, usedRequiredMappingTypes) {
+		for _, rType := range requiredMappingValues {
+			if !functions.StringInSlice(rType, usedRequiredMappingTypes) {
 
-					fmt.Println(`- WARNING: Mapping Value "` + rType + `" is required in SLD, but is not defined in mapping!`)
+				fmt.Println(`- WARNING: Mapping Value "` + rType + `" is required in SLD, but is not defined in mapping!`)
 
-					if allowResearch {
-						fmt.Println(`-  Searching for Tag "` + rType + `"...`)
-						findKeys := tagfinder.FindTagKey(rType)
+				if allowResearch {
+					fmt.Println(`-  Searching for Tag "` + rType + `"...`)
+					findKeys := tagfinder.FindTagKey(rType)
 
-						if len(findKeys) == 1 {
-							fmt.Print("-  The following keyword was found: ")
-							fmt.Println(findKeys[0])
-						} else if len(findKeys) > 1 {
-							fmt.Print("-  The following keywords were found: ")
-							fmt.Println(findKeys)
+					if len(findKeys) == 1 {
+						fmt.Print("-  The following keyword was found: ")
+						fmt.Println(findKeys[0])
+					} else if len(findKeys) > 1 {
+						fmt.Print("-  The following keywords were found: ")
+						fmt.Println(findKeys)
+					} else {
+						fmt.Println("-  No matching keywords were found!")
+						continue
+					}
+
+					for _, newKey := range findKeys {
+						fmt.Println(`- Mapping Value "` + rType + `" added with key/class value "` + newKey + `"`)
+
+						if newTable.Mappings[newKey].Mapping != nil {
+							newTable.Mappings[newKey].Mapping[newKey] = append(newTable.Mappings[newKey].Mapping[newKey], rType)
 						} else {
-							fmt.Println("-  No matching keywords were found!")
-							continue
-						}
-
-						for _, newKey := range findKeys {
-							fmt.Println(`- Mapping Value "` + rType + `" added with key/class value "` + newKey + `"`)
-							newTable.Mappings[mainClass].Mapping[newKey] = append(newTable.Mappings[mainClass].Mapping[newKey], rType)
+							for mainClass := range rootTable.Mappings {
+								newTable.Mappings[mainClass].Mapping[newKey] = append(newTable.Mappings[mainClass].Mapping[newKey], rType)
+							}
 						}
 					}
 				}
 			}
 		}
 	}
+}
+
+func (m *mappingParser) getRelatedGeneralizedTables(tableName string) []string {
+	foundGenTable := make([]string, 0)
+
+	for genTableName, genTable := range m.mappingRoot.GeneralizedTables {
+		if genTable.Source == tableName {
+			foundGenTable = m.getRelatedGeneralizedTables(genTableName)
+			foundGenTable = append(foundGenTable, genTableName)
+		}
+	}
+
+	return foundGenTable
+}
+
+func generateSQLFilter(mappingColumns sld.MappingColumnNames, requiredColumnList []sld.RequiredColumn, requiredMappingValues []string, useAllMappingTypes bool) string {
+	filter := ""
+
+	if !useAllMappingTypes {
+
+		found, _ := sld.ColumnInColumnlist(mappingColumns.MappingValueColumnName, requiredColumnList)
+
+		if found && len(requiredMappingValues) > 0 {
+
+			filter = mappingColumns.MappingValueColumnName + " IN ("
+
+			for i, mappingValue := range requiredMappingValues {
+				if i > 0 {
+					filter = filter + ", '" + mappingValue + "'"
+				} else {
+					filter = filter + "'" + mappingValue + "'"
+				}
+			}
+
+			filter = filter + ")"
+
+		}
+	}
+
+	return filter
 }

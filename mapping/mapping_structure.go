@@ -13,7 +13,7 @@ type Tags struct {
 type GeneralizedTable struct {
 	Source    string  `yaml:"source" json:"source"`
 	SQLFilter string  `yaml:"sql_filter,omitempty" json:"sql_filter,omitempty"`
-	Tolerance float32 `yaml:"tolerance" json:"tolerance"`
+	Tolerance float64 `yaml:"tolerance" json:"tolerance"`
 }
 
 //Areas wip
@@ -48,16 +48,16 @@ type TableMapping struct {
 type Table struct {
 	Type          string                  `yaml:"type" json:"type"`
 	Columns       []TableColumn           `yaml:"columns" json:"columns"`
-	Mapping       map[string][]string     `yaml:"mapping,flow" json:"mapping,flow"`
-	Mappings      map[string]TableMapping `yaml:"mappings,flow" json:"mappings,flow"`
+	Mapping       map[string][]string     `yaml:"mapping,flow,omitempty" json:"mapping,flow,omitempty"`
+	Mappings      map[string]TableMapping `yaml:"mappings,flow,omitempty" json:"mappings,flow,omitempty"`
 	RelationTypes []string                `yaml:"relation_types,flow,omitempty" json:"relation_types,flow,omitempty"`
-	Filter        TableFilter             `yaml:"filters" json:"filters"`
+	Filter        *TableFilter            `yaml:"filters,omitempty" json:"filters,omitempty"`
 }
 
 //Mapping Root of the mapping file
 type Mapping struct {
 	Tabels            map[string]Table            `yaml:"tables" json:"tables"`
-	Areas             Areas                       `yaml:"areas" json:"areas"`
+	Areas             *Areas                      `yaml:"areas" json:"areas"`
 	GeneralizedTables map[string]GeneralizedTable `yaml:"generalized_tables" json:"generalized_tables"`
-	Tags              Tags                        `yaml:"tags,omitempty" json:"tags,omitempty"`
+	Tags              *Tags                       `yaml:"tags,omitempty" json:"tags,omitempty"`
 }

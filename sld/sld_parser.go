@@ -46,7 +46,7 @@ func (s *Parser) loadSLDFile() error {
 
 /*ExtractRequirements ( mappingValueColumnName ) will return all required values in form of a ParsedSLD structure.
 "mappingValueColumnName" specifies the column name, which has the type mapping_value*/
-func (s *Parser) ExtractRequirements(mappingValueColumnName string) (ParsedSLD, error) {
+func (s *Parser) ExtractRequirements(mappingColums MappingColumnNames) (ParsedSLD, error) {
 
 	//Check if sld file is already pared
 	if s.successfullPasing == false {
@@ -62,13 +62,13 @@ func (s *Parser) ExtractRequirements(mappingValueColumnName string) (ParsedSLD, 
 
 	scaleDenominator := ScaleDenominator{-1, -1}
 
-	err := s.searchSLDRecursiv(s.fileByteArray, &columnList, &mappingTypeList, &scaleDenominator, mappingValueColumnName)
+	err := s.searchSLDRecursiv(s.fileByteArray, &columnList, &mappingTypeList, &scaleDenominator, mappingColums.MappingValueColumnName)
 
 	if err != nil {
 		return ParsedSLD{}, err
 	}
 
-	return ParsedSLD{s.filePath, TableRequirements{columnList, mappingTypeList}, scaleDenominator, s.useAllMappingTypes}, nil
+	return ParsedSLD{s.filePath, TableRequirements{mappingColums, columnList, mappingTypeList}, scaleDenominator, s.useAllMappingTypes}, nil
 }
 
 func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]RequiredColumn, mappingTypeList *[]string, scaleDenominator *ScaleDenominator, mappingValueColumnName string) error {
@@ -100,7 +100,7 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 
 			//search all Literals that belongs to the PropertyName
 			if n.ParentNode != nil {
-				//search the perentnode for "Literal"
+				//search the parentnode for "Literal"
 				for _, adjacentNode := range n.ParentNode.Nodes {
 					if adjacentNode.XMLName.Local == "Literal" {
 
@@ -124,25 +124,19 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 			}
 
 			//check if PropertyName Element is not already in list
-			found := false
-			for _, rColumn := range *columnList {
-				if newColumnName == rColumn.PropertyName {
-					found = true
-
-					//if PropertyName Element is already in list, add missing literals
-					for _, literal := range literalList {
-						if !functions.StringInSlice(literal, rColumn.Literals) {
-							rColumn.Literals = append(rColumn.Literals, literal)
-						}
-					}
-
-					break
-				}
-			}
+			found, i := ColumnInColumnlist(newColumnName, *columnList)
 
 			if !found {
+
 				newColumn.Literals = literalList
 				*columnList = append(*columnList, newColumn)
+			} else {
+				//if PropertyName Element is already in list, add missing literals
+				for _, literal := range literalList {
+					if !functions.StringInSlice(literal, (*columnList)[i].Literals) {
+						(*columnList)[i].Literals = append((*columnList)[i].Literals, literal)
+					}
+				}
 			}
 
 			//search for VendorOption "name" and "sortby" and add attribut to columnList
@@ -152,13 +146,7 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 					newColumnName := string(n.Content)
 
 					//check if PropertyName Element is not already in list
-					found := false
-					for _, rColumn := range *columnList {
-						if newColumnName == rColumn.PropertyName {
-							found = true
-							break
-						}
-					}
+					found, _ := ColumnInColumnlist(newColumnName, *columnList)
 
 					if !found {
 						*columnList = append(*columnList, RequiredColumn{newColumnName, nil})
@@ -221,8 +209,6 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 	//set sld filter status
 	if foundRule && ruleFiltersMappingType {
 		s.useAllMappingTypes = false
-	} else {
-		fmt.Println("Not all filter tags filter a mapping type, therefore all existing mapping types are used")
 	}
 
 	return nil
@@ -314,4 +300,16 @@ true = mapping values can be filtered,
 false = it is not obvious which mapping values can be used. There is no filtering*/
 func (s *Parser) UseAllMappingTypes() bool {
 	return s.useAllMappingTypes
+}
+
+//ColumnInColumnlist checks if a list of required columns contains a specific column. The check is only performed using the column name
+func ColumnInColumnlist(columnName string, columnList []RequiredColumn) (bool, int) {
+
+	for i, column := range columnList {
+		if columnName == column.PropertyName {
+			return true, i
+		}
+	}
+
+	return false, -1
 }

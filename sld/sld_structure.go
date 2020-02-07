@@ -54,6 +54,7 @@ type RequiredColumn struct {
 
 //TableRequirements combine all required table columns and mapping values
 type TableRequirements struct {
+	MappingColumns        MappingColumnNames
 	RequiredColumnList    []RequiredColumn
 	RequiredMappingValues []string
 }
@@ -67,4 +68,10 @@ type ParsedSLD struct {
 	Requirements       TableRequirements
 	Scale              ScaleDenominator
 	UseAllMappingTypes bool
+}
+
+//MappingColumnNames stores the column names, which have the value "mapping_value" or "mapping_key" as type
+type MappingColumnNames struct {
+	MappingKeyColumnName   string
+	MappingValueColumnName string
 }

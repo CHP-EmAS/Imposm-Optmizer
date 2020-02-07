@@ -1,5 +1,5 @@
 {
-    "mapping_path": "test/mapping.yaml",
+    "mapping_path": "test/mapping.json",
     "mapping_out_path": "test/",
     "mapping_prefix": "new_",
     "keep_columns": [
@@ -8,6 +8,7 @@
         "id",
         "member_id"
     ],
+    "force_filtering": true,
     "allow_research": true,
     "tables": {
         "admin": [
@@ -64,10 +65,10 @@
             "ignore"
         ],
         "roads_gen0": [
-            "ignore"
+            "test/osm_roads_gen0.sld"
         ],
         "roads_gen1": [
-            "ignore"
+            "test/osm_roads_gen1.sld"
         ],
         "waterareas_gen0": [
             "ignore"

@@ -19,6 +19,7 @@ type config struct {
 	MappingOutPath       string              `json:"mapping_out_path"`
 	MappingPrefix        string              `json:"mapping_prefix"`
 	KeepColumns          []string            `json:"keep_columns,flow,omitempty"`
+	ForceFiltering       bool                `json:"force_filtering"`
 	AllowResearch        bool                `json:"allow_research"`
 	TableList            map[string][]string `json:"tables,flow,omitempty"`
 	GeneralizedTableList map[string][]string `json:"generalized_tables,flow,omitempty"`
@@ -128,6 +129,13 @@ func InitConfigFile() error {
 	}
 
 	//standart required columns -- no input, must be changed in json file
+	forceFiltering := false
+
+	if foundOldConfig {
+		forceFiltering = oldConfig.ForceFiltering
+	}
+
+	//standart required columns -- no input, must be changed in json file
 	requiredColumnTypes := []string{"geometry", "validated_geometry", "id", "member_id"}
 
 	if foundOldConfig {
@@ -135,7 +143,7 @@ func InitConfigFile() error {
 	}
 
 	//input sld's for normal tables
-	mappingParser := mapping.New(pathToMapping, allowResearch, requiredColumnTypes)
+	mappingParser := mapping.New(pathToMapping, forceFiltering, allowResearch, requiredColumnTypes)
 	mappingTables := mappingParser.GetTableNames()
 
 	tableMap := make(map[string][]string)
@@ -207,7 +215,7 @@ func InitConfigFile() error {
 		}
 	}
 
-	newConf := config{pathToMapping, pathOutMapping, prefix, requiredColumnTypes, allowResearch, tableMap, generalizedTableMap}
+	newConf := config{pathToMapping, pathOutMapping, prefix, requiredColumnTypes, forceFiltering, allowResearch, tableMap, generalizedTableMap}
 
 	err := saveConfigFile(newConf)
 
