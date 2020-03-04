@@ -8,8 +8,9 @@
         "id",
         "member_id"
     ],
-    "force_filtering": true,
+    "force_filtering": false,
     "allow_research": true,
+    "tolerance_scaling": 10.0,
     "tables": {
         "admin": [
             "test/osm_admin.sld"
@@ -59,10 +60,10 @@
     },
     "generalized_tables": {
         "landusages_gen0": [
-            "ignore"
+            "test/osm_landusages_gen0.sld"
         ],
         "landusages_gen1": [
-            "ignore"
+            "test/osm_landusages_gen1.sld"
         ],
         "roads_gen0": [
             "test/osm_roads_gen0.sld"
@@ -71,16 +72,16 @@
             "test/osm_roads_gen1.sld"
         ],
         "waterareas_gen0": [
-            "ignore"
+            "test/osm_waterareas_gen0.sld"
         ],
         "waterareas_gen1": [
-            "ignore"
+            "test/osm_waterareas_gen1.sld"
         ],
         "waterways_gen0": [
-            "ignore"
+            "test/osm_waterways_gen0.sld"
         ],
         "waterways_gen1": [
-            "ignore"
+            "test/osm_waterways_gen1.sld"
         ]
     }
 }

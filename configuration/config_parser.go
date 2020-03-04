@@ -21,6 +21,7 @@ type config struct {
 	KeepColumns          []string            `json:"keep_columns,flow,omitempty"`
 	ForceFiltering       bool                `json:"force_filtering"`
 	AllowResearch        bool                `json:"allow_research"`
+	ToleranceScaling     float32             `json:"tolerance_scaling"`
 	TableList            map[string][]string `json:"tables,flow,omitempty"`
 	GeneralizedTableList map[string][]string `json:"generalized_tables,flow,omitempty"`
 }
@@ -123,16 +124,24 @@ func InitConfigFile() error {
 		}
 	}
 
+	//should necessary values not found be looked up -- no input, must be changed in json file
 	allowResearch := false
 	if strings.Compare("y", strings.ToLower(ans)) == 0 || strings.Compare("yes", strings.ToLower(ans)) == 0 {
 		allowResearch = true
 	}
 
-	//standart required columns -- no input, must be changed in json file
+	//should each table force the filtering of mapping values -- no input, must be changed in json file
 	forceFiltering := false
 
 	if foundOldConfig {
 		forceFiltering = oldConfig.ForceFiltering
+	}
+
+	//tolerance scaling for the tolerance value in generalized tables, is given in percent -- no input, must be changed in json file
+	var toleranceScaling float32 = 50.0
+
+	if foundOldConfig {
+		toleranceScaling = oldConfig.ToleranceScaling
 	}
 
 	//standart required columns -- no input, must be changed in json file
@@ -143,7 +152,7 @@ func InitConfigFile() error {
 	}
 
 	//input sld's for normal tables
-	mappingParser := mapping.New(pathToMapping, forceFiltering, allowResearch, requiredColumnTypes)
+	mappingParser := mapping.New(pathToMapping, forceFiltering, allowResearch, toleranceScaling, requiredColumnTypes)
 	mappingTables := mappingParser.GetTableNames()
 
 	tableMap := make(map[string][]string)
@@ -215,7 +224,7 @@ func InitConfigFile() error {
 		}
 	}
 
-	newConf := config{pathToMapping, pathOutMapping, prefix, requiredColumnTypes, forceFiltering, allowResearch, tableMap, generalizedTableMap}
+	newConf := config{pathToMapping, pathOutMapping, prefix, requiredColumnTypes, forceFiltering, allowResearch, toleranceScaling, tableMap, generalizedTableMap}
 
 	err := saveConfigFile(newConf)
 

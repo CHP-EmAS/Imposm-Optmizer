@@ -10,6 +10,25 @@ import (
 	"path/filepath"
 )
 
+var nonExplicitFilteringOperators = []string{
+	"PropertyIsNotEqualTo",
+	"PropertyIsLike",
+	"PropertyIsBetween",
+	"PropertyIsLessThan",
+	"PropertyIsLessThanOrEqualTo",
+	"PropertyIsGreaterThan",
+	"PropertyIsGreaterThanOrEqualTo"}
+
+var nonExplicitFilteringFunctions = []string{
+	"between",
+	"greaterEqualThan",
+	"greaterThan",
+	"isLike",
+	"lessThan",
+	"lessEqualThan",
+	"not",
+	"notEqual"}
+
 //Parser class
 type Parser struct {
 	filePath           string
@@ -100,6 +119,7 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 
 			//search all Literals that belongs to the PropertyName
 			if n.ParentNode != nil {
+
 				//search the parentnode for "Literal"
 				for _, adjacentNode := range n.ParentNode.Nodes {
 					if adjacentNode.XMLName.Local == "Literal" {
@@ -241,7 +261,23 @@ func checkIfRuleFiltersMappingTypes(rule *Rule, mappingValueColumnName string) (
 	walk([]recursiveNode{n}, &n, func(n recursiveNode) bool {
 		if n.XMLName.Local == "PropertyName" {
 			if string(n.Content) == mappingValueColumnName {
+
+				if n.ParentNode != nil {
+					if functions.StringInSlice(n.ParentNode.XMLName.Local, nonExplicitFilteringOperators) {
+						return true
+					} else if n.ParentNode.XMLName.Local == "Function" {
+						for _, attr := range n.ParentNode.Attrs {
+							if attr.Name.Local == "name" {
+								if functions.StringInSlice(attr.Value, nonExplicitFilteringFunctions) {
+									return true
+								}
+							}
+						}
+					}
+				}
+
 				foundMappingFilter = true
+
 				return false
 			}
 		}

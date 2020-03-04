@@ -21,12 +21,13 @@ type mappingParser struct {
 	sourceFileType      string
 	forceFiltering      bool
 	allowResearch       bool
+	toleranceScaling    float32
 	requiredColumnTypes []string
 }
 
 //New (filePath) createts a new parser object, file path to the mapping file is requiered
-func New(filePath string, allowResearch bool, forceFiltering bool, requiredColumnTypes []string) mappingParser {
-	m := mappingParser{filePath, false, Mapping{}, "", forceFiltering, allowResearch, requiredColumnTypes}
+func New(filePath string, allowResearch bool, forceFiltering bool, toleranceScaling float32, requiredColumnTypes []string) mappingParser {
+	m := mappingParser{filePath, false, Mapping{}, "", forceFiltering, allowResearch, toleranceScaling, requiredColumnTypes}
 	return m
 }
 
@@ -224,7 +225,7 @@ func (m *mappingParser) RebuildMappingStructure(parsedSLDs map[string][]sld.Pars
 		useAllMappingTypes := false
 
 		//get the minimum min scale
-		var minScale float64 = -1
+		var minScale int = -1
 
 		for _, comparedTable := range parsedSLDs[genTableName] {
 			appendRequirements(&combinedRequirements, comparedTable)
@@ -233,8 +234,8 @@ func (m *mappingParser) RebuildMappingStructure(parsedSLDs map[string][]sld.Pars
 				useAllMappingTypes = true
 			}
 
-			if minScale == -1 || minScale > float64(comparedTable.Scale.MinScaleDenominator) {
-				minScale = float64(comparedTable.Scale.MinScaleDenominator)
+			if minScale == -1 || minScale > comparedTable.Scale.MinScaleDenominator {
+				minScale = comparedTable.Scale.MinScaleDenominator
 			}
 		}
 
@@ -254,14 +255,14 @@ func (m *mappingParser) RebuildMappingStructure(parsedSLDs map[string][]sld.Pars
 			}
 		}
 
-		newGenTable.SQLFilter = generateSQLFilter(m.GetMappingColumnName(genTableName), combinedRequirements.RequiredColumnList, combinedRequirements.RequiredMappingValues, (useAllMappingTypes || m.forceFiltering))
+		newGenTable.SQLFilter = generateSQLFilter(m.GetMappingColumnName(genTableName), combinedRequirements.RequiredColumnList, combinedRequirements.RequiredMappingValues, table.SQLFilter, (useAllMappingTypes && !m.forceFiltering))
 
 		if newGenTable.SQLFilter != "" {
 			fmt.Println("- SQL-Filter: " + newGenTable.SQLFilter)
 		}
 
-		newGenTable.Tolerance = minScale
-		fmt.Println("- Tolerance:", minScale)
+		newGenTable.Tolerance = float64(minScale) * (float64(m.toleranceScaling) / float64(100.0))
+		fmt.Println("- Tolerance:", newGenTable.Tolerance)
 
 		newMappingRoot.GeneralizedTables[genTableName] = *newGenTable
 
@@ -603,7 +604,7 @@ func (m *mappingParser) getRelatedGeneralizedTables(tableName string) []string {
 	return foundGenTable
 }
 
-func generateSQLFilter(mappingColumns sld.MappingColumnNames, requiredColumnList []sld.RequiredColumn, requiredMappingValues []string, useAllMappingTypes bool) string {
+func generateSQLFilter(mappingColumns sld.MappingColumnNames, requiredColumnList []sld.RequiredColumn, requiredMappingValues []string, oldSQLFilter string, useAllMappingTypes bool) string {
 	filter := ""
 
 	if !useAllMappingTypes {
@@ -623,9 +624,56 @@ func generateSQLFilter(mappingColumns sld.MappingColumnNames, requiredColumnList
 			}
 
 			filter = filter + ")"
+		}
 
+		if oldSQLFilter != "" {
+			oldSQLFilter = discardMappingValueFilter(oldSQLFilter, mappingColumns)
+
+			if oldSQLFilter != "" {
+				filter = filter + " AND " + oldSQLFilter
+			}
 		}
 	}
 
+	if filter == "" {
+		filter = oldSQLFilter
+	}
+
 	return filter
+}
+
+func discardMappingValueFilter(sqlFilter string, mappingColumns sld.MappingColumnNames) string {
+
+	newFilter := ""
+
+	if strings.Contains(sqlFilter, mappingColumns.MappingValueColumnName) || strings.Contains(sqlFilter, mappingColumns.MappingKeyColumnName) {
+		split := strings.Fields(sqlFilter)
+
+		mode := false
+		bracket := false
+
+		for _, c := range split {
+			if c == mappingColumns.MappingValueColumnName || c == mappingColumns.MappingKeyColumnName {
+				mode = true
+			}
+
+			if mode && !bracket {
+				if c == "OR" || c == "AND" {
+					mode = false
+				} else if strings.Contains(c, "(") {
+					bracket = true
+				}
+			} else if !mode && !bracket {
+				newFilter += c + " "
+			} else {
+				if strings.Contains(c, ")") {
+					bracket = false
+				}
+			}
+		}
+	} else {
+		return sqlFilter
+	}
+
+	return newFilter
 }

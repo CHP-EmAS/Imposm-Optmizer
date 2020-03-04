@@ -68,10 +68,11 @@ func main() {
 	fmt.Println("- filtering is forced       :", config.ForceFiltering)
 	fmt.Println("- API is used for searching :", config.AllowResearch)
 	fmt.Println("- columns which are kept    :", config.KeepColumns)
+	fmt.Println("- tolerance scaling         :", config.ToleranceScaling, "\b%")
 	fmt.Println("")
 
 	//init mapping parser
-	mappingParser := mapping.New(config.MappingFilePath, config.ForceFiltering, config.AllowResearch, config.KeepColumns)
+	mappingParser := mapping.New(config.MappingFilePath, config.AllowResearch, config.ForceFiltering, config.ToleranceScaling, config.KeepColumns)
 
 	//get all tables
 	mappingTables := mappingParser.GetTableNames()
