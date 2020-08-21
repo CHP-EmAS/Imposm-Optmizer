@@ -1,16 +1,16 @@
 package main
 
 import (
-	"ConverterX/configuration"
-	"ConverterX/mapping"
-	"ConverterX/sld"
-	functions "ConverterX/std_functions"
+	"configuration"
 	"container/list"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"mapping"
 	"os"
 	"path"
+	"sld"
+	functions "std_functions"
 	"strconv"
 )
 
