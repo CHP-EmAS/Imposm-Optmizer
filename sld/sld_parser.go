@@ -1,7 +1,7 @@
 package sld
 
 import (
-	functions "ConverterX/std_functions"
+	functions "Imposm_Optimizer/std_functions"
 	"bytes"
 	"encoding/xml"
 	"errors"
@@ -78,26 +78,27 @@ func (s *Parser) ExtractRequirements(mappingColums MappingColumnNames) (ParsedSL
 
 	columnList := make([]RequiredColumn, 0)
 	mappingTypeList := make([]string, 0)
+	implicitFilteredValueList := make([]string, 0)
 
 	scaleDenominator := ScaleDenominator{-1, -1}
 
-	err := s.searchSLDRecursiv(s.fileByteArray, &columnList, &mappingTypeList, &scaleDenominator, mappingColums.MappingValueColumnName)
+	err := s.searchSLDRecursiv(s.fileByteArray, &columnList, &mappingTypeList, &implicitFilteredValueList, &scaleDenominator, mappingColums.MappingValueColumnName)
 
 	if err != nil {
 		return ParsedSLD{}, err
 	}
 
-	return ParsedSLD{s.filePath, TableRequirements{mappingColums, columnList, mappingTypeList}, scaleDenominator, s.useAllMappingTypes}, nil
+	return ParsedSLD{s.filePath, TableRequirements{mappingColums, columnList, mappingTypeList, implicitFilteredValueList}, scaleDenominator, s.useAllMappingTypes}, nil
 }
 
-func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]RequiredColumn, mappingTypeList *[]string, scaleDenominator *ScaleDenominator, mappingValueColumnName string) error {
+func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]RequiredColumn, mappingTypeList *[]string, implicitFilteredValueList *[]string, scaleDenominator *ScaleDenominator, mappingValueColumnName string) error {
 	//init buffer and decoder for unmarshal recursiv xml
-	buf := bytes.NewBuffer(mappingFileData)
-	dec := xml.NewDecoder(buf)
+	sldBuffer := bytes.NewBuffer(mappingFileData)
+	decoder := xml.NewDecoder(sldBuffer)
 
 	//start node
-	var n recursiveNode
-	err := dec.Decode(&n)
+	var node recursiveNode
+	err := decoder.Decode(&node)
 	if err != nil {
 		return err
 	}
@@ -107,21 +108,21 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 	ruleList := make([]Rule, 0)
 
 	//walk through nodes
-	walk([]recursiveNode{n}, &n, func(n recursiveNode) bool {
+	walk([]recursiveNode{node}, &node, func(node recursiveNode) bool {
 
 		//search for PropertyName Element
-		if n.XMLName.Local == "PropertyName" {
+		if node.XMLName.Local == "PropertyName" {
 
-			newColumnName := string(n.Content)
+			newColumnName := string(node.Content)
 			newColumn := RequiredColumn{newColumnName, nil}
 
 			literalList := make([]string, 0)
 
 			//search all Literals that belongs to the PropertyName
-			if n.ParentNode != nil {
+			if node.ParentNode != nil {
 
 				//search the parentnode for "Literal"
-				for _, adjacentNode := range n.ParentNode.Nodes {
+				for _, adjacentNode := range node.ParentNode.Nodes {
 					if adjacentNode.XMLName.Local == "Literal" {
 
 						//add Literal to literalList, is used to calculate the data type
@@ -160,10 +161,10 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 			}
 
 			//search for VendorOption "name" and "sortby" and add attribut to columnList
-		} else if n.XMLName.Local == "VendorOption" {
-			for _, attr := range n.Attrs {
+		} else if node.XMLName.Local == "VendorOption" {
+			for _, attr := range node.Attrs {
 				if attr.Name.Local == "name" && attr.Value == "sortBy" {
-					newColumnName := string(n.Content)
+					newColumnName := string(node.Content)
 
 					//check if PropertyName Element is not already in list
 					found, _ := ColumnInColumnlist(newColumnName, *columnList)
@@ -175,9 +176,9 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 				}
 			}
 
-		} else if n.XMLName.Local == "Rule" { //extract all rule tags
+		} else if node.XMLName.Local == "Rule" { //extract all rule tags
 
-			copyByteStream := n.Content
+			copyByteStream := node.Content
 
 			//add beginning and end tag to the rule content, for correct decoding the rule
 			copyByteStream = append([]byte("<Rule>"), copyByteStream...)
@@ -214,7 +215,7 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 			scaleDenominator.MinScaleDenominator = rule.MinScale
 		}
 
-		mappingTypeFound, err := checkIfRuleFiltersMappingTypes(&rule, mappingValueColumnName)
+		mappingTypeFound, err := checkIfRuleFiltersMappingTypes(&rule, mappingValueColumnName, implicitFilteredValueList)
 
 		if err != nil {
 			fmt.Println("Parsing Error: " + err.Error())
@@ -234,7 +235,7 @@ func (s *Parser) searchSLDRecursiv(mappingFileData []byte, columnList *[]Require
 	return nil
 }
 
-func checkIfRuleFiltersMappingTypes(rule *Rule, mappingValueColumnName string) (bool, error) {
+func checkIfRuleFiltersMappingTypes(rule *Rule, mappingValueColumnName string, implicitFilteredValueList *[]string) (bool, error) {
 
 	if rule.Filter.XMLContent == nil {
 
@@ -246,39 +247,50 @@ func checkIfRuleFiltersMappingTypes(rule *Rule, mappingValueColumnName string) (
 	}
 
 	//init buffer and decoder for unmarshal recursiv xml
-	buf := bytes.NewBuffer(rule.Filter.XMLContent) //check only the filter tag/content
-	dec := xml.NewDecoder(buf)
+	ruleBuffer := bytes.NewBuffer(rule.Filter.XMLContent) //check only the filter tag/content
+	dececoder := xml.NewDecoder(ruleBuffer)
 
 	//start node
-	var n recursiveNode
-	err := dec.Decode(&n)
+	var node recursiveNode
+	err := dececoder.Decode(&node)
 	if err != nil {
 		return false, err
 	}
 
-	foundMappingFilter := false
+	foundMappingFilter := true
 
-	walk([]recursiveNode{n}, &n, func(n recursiveNode) bool {
-		if n.XMLName.Local == "PropertyName" {
-			if string(n.Content) == mappingValueColumnName {
+	walk([]recursiveNode{node}, &node, func(node recursiveNode) bool {
+		if node.XMLName.Local == "PropertyName" {
+			if string(node.Content) == mappingValueColumnName {
 
-				if n.ParentNode != nil {
-					if functions.StringInSlice(n.ParentNode.XMLName.Local, nonExplicitFilteringOperators) {
-						return true
-					} else if n.ParentNode.XMLName.Local == "Function" {
-						for _, attr := range n.ParentNode.Attrs {
+				if node.ParentNode != nil {
+					if functions.StringInSlice(node.ParentNode.XMLName.Local, nonExplicitFilteringOperators) {
+
+						if node.ParentNode.XMLName.Local == "PropertyIsNotEqualTo" {
+
+							for _, adjacentNode := range node.ParentNode.Nodes {
+								if adjacentNode.XMLName.Local == "Literal" {
+									newLiteralName := string(adjacentNode.Content)
+									*implicitFilteredValueList = append(*implicitFilteredValueList, string(node.Content)+":"+newLiteralName)
+								}
+							}
+						}
+
+						foundMappingFilter = false
+						return false
+					} else if node.ParentNode.XMLName.Local == "Function" {
+						for _, attr := range node.ParentNode.Attrs {
 							if attr.Name.Local == "name" {
 								if functions.StringInSlice(attr.Value, nonExplicitFilteringFunctions) {
-									return true
+									foundMappingFilter = false
+									return false
 								}
 							}
 						}
 					}
 				}
 
-				foundMappingFilter = true
-
-				return false
+				return true
 			}
 		}
 
@@ -288,7 +300,12 @@ func checkIfRuleFiltersMappingTypes(rule *Rule, mappingValueColumnName string) (
 	return foundMappingFilter, nil
 }
 
-//Recursive search
+//Node Structure
+//- XMLName: Name of the XML Object
+//- Attrs: An Array of XML Attributes -> class="test"
+//- Content: The full Content as Byte Array
+//- Nodes: All Childnode as an Array of recursiveNode Object
+//- ParentNode: an recursiveNode Object representing the Parent Node of the current Node
 type recursiveNode struct {
 	XMLName    xml.Name
 	Attrs      []xml.Attr      `xml:"-"`
@@ -297,26 +314,30 @@ type recursiveNode struct {
 	ParentNode *recursiveNode  `xml:"-"`
 }
 
+//Walk function for recursivly going trow the recursiveNode Objects
+//- nodes: Array of nodes to be iterated through
+//- parentNode: The Parent Node of the current Nodes
+//- f: a cancel function, which stops the recursion of the current node. false = stop, true = continue
 func walk(nodes []recursiveNode, parentNode *recursiveNode, f func(recursiveNode) bool) {
-	for _, n := range nodes {
+	for _, childNode := range nodes {
 
-		n.ParentNode = parentNode
+		childNode.ParentNode = parentNode
 
-		if f(n) {
-			walk(n.Nodes, &n, f)
+		if f(childNode) {
+			walk(childNode.Nodes, &childNode, f)
 		}
 	}
 }
 
-//override UnmarshalXML function
-func (n *recursiveNode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+//Override UnmarshalXML function
+func (r_Node *recursiveNode) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) error {
 
 	//get XML Attributs
-	n.Attrs = start.Attr
+	r_Node.Attrs = start.Attr
 
 	type node recursiveNode
 
-	return d.DecodeElement((*node)(n), &start)
+	return decoder.DecodeElement((*node)(r_Node), &start)
 }
 
 //getter/setter

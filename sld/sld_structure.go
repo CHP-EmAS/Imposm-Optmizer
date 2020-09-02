@@ -27,17 +27,6 @@ type Rule struct {
 	RasterSymbolizer  []Symbolizer `xml:"RasterSymbolizer,omitempty"`
 }
 
-//FeatureTypeStyle --
-type FeatureTypeStyle struct {
-	Rules []Rule `xml:"Rule,flow,omitempty"`
-}
-
-//VendorOption contains the name and value of a VendorOption from an SLD
-type VendorOption struct {
-	OptionName string `xml:"name,attr"`
-	Value      string `xml:",chardata"`
-}
-
 //########### Parser structures ###########//
 
 //ScaleDenominator contains information of the scale denominator of a specific sld file
@@ -54,9 +43,10 @@ type RequiredColumn struct {
 
 //TableRequirements combine all required table columns and mapping values
 type TableRequirements struct {
-	MappingColumns        MappingColumnNames
-	RequiredColumnList    []RequiredColumn
-	RequiredMappingValues []string
+	MappingColumns         MappingColumnNames
+	RequiredColumnList     []RequiredColumn
+	RequiredMappingValues  []string
+	ImplicitFilteredValues []string
 }
 
 //ParsedSLD contains necessary information about the parsed SLD file

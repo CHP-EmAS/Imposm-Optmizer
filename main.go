@@ -1,16 +1,16 @@
 package main
 
 import (
-	"configuration"
+	"Imposm_Optimizer/configuration"
+	"Imposm_Optimizer/mapping"
+	"Imposm_Optimizer/sld"
+	functions "Imposm_Optimizer/std_functions"
 	"container/list"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"mapping"
 	"os"
 	"path"
-	"sld"
-	functions "std_functions"
 	"strconv"
 )
 
@@ -202,6 +202,7 @@ func main() {
 
 	if err != nil {
 		fmt.Println("Error: " + err.Error())
+		return
 	}
 
 	return

@@ -56,7 +56,7 @@ type Table struct {
 
 //Mapping Root of the mapping file
 type Mapping struct {
-	Tabels            map[string]Table            `yaml:"tables" json:"tables"`
+	Tables            map[string]Table            `yaml:"tables" json:"tables"`
 	Areas             *Areas                      `yaml:"areas" json:"areas"`
 	GeneralizedTables map[string]GeneralizedTable `yaml:"generalized_tables" json:"generalized_tables"`
 	Tags              *Tags                       `yaml:"tags,omitempty" json:"tags,omitempty"`

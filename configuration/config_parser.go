@@ -1,8 +1,8 @@
 package configuration
 
 import (
-	"ConverterX/mapping"
-	functions "ConverterX/std_functions"
+	"Imposm_Optimizer/mapping"
+	functions "Imposm_Optimizer/std_functions"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -124,7 +124,7 @@ func InitConfigFile() error {
 		}
 	}
 
-	//should necessary values not found be looked up -- no input, must be changed in json file
+	//should necessary values not found be looked up
 	allowResearch := false
 	if strings.Compare("y", strings.ToLower(ans)) == 0 || strings.Compare("yes", strings.ToLower(ans)) == 0 {
 		allowResearch = true
@@ -138,7 +138,7 @@ func InitConfigFile() error {
 	}
 
 	//tolerance scaling for the tolerance value in generalized tables, is given in percent -- no input, must be changed in json file
-	var toleranceScaling float32 = 50.0
+	var toleranceScaling float32 = 0.1
 
 	if foundOldConfig {
 		toleranceScaling = oldConfig.ToleranceScaling
