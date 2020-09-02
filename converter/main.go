@@ -188,6 +188,8 @@ func main() {
 		fmt.Print("\n")
 
 		comparedTables[genTableName] = parsedSLDList
+
+		fmt.print("asdasd")
 	}
 
 	fmt.Println("************** Rebuilding mapping file *************")
