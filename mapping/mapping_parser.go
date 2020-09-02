@@ -1,9 +1,9 @@
 package mapping
 
 import (
-	tagfinder "ConverterX/osm_tagfinder_api"
-	"ConverterX/sld"
-	functions "ConverterX/std_functions"
+	tagfinder "Imposm_Optimizer/osm_tagfinder_api"
+	"Imposm_Optimizer/sld"
+	functions "Imposm_Optimizer/std_functions"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -108,7 +108,7 @@ func (m *mappingParser) GetMappingColumnName(tableName string) sld.MappingColumn
 
 	mappingColumns := sld.MappingColumnNames{}
 
-	for _, column := range m.mappingRoot.Tabels[tableName].Columns {
+	for _, column := range m.mappingRoot.Tables[tableName].Columns {
 		if strings.Compare("mapping_value", column.Type) == 0 {
 			mappingColumns.MappingValueColumnName = column.Name
 		} else if strings.Compare("mapping_key", column.Type) == 0 {
@@ -151,10 +151,10 @@ func (m *mappingParser) RebuildMappingStructure(parsedSLDs map[string][]sld.Pars
 	newMappingRoot.Areas = m.mappingRoot.Areas
 	newMappingRoot.GeneralizedTables = m.mappingRoot.GeneralizedTables
 	newMappingRoot.Tags = m.mappingRoot.Tags
-	newMappingRoot.Tabels = make(map[string]Table)
+	newMappingRoot.Tables = make(map[string]Table)
 
 	//build all known tables
-	for tableName, table := range m.mappingRoot.Tabels {
+	for tableName, table := range m.mappingRoot.Tables {
 
 		fmt.Println(`Building Table "` + tableName + `"...`)
 
@@ -195,8 +195,9 @@ func (m *mappingParser) RebuildMappingStructure(parsedSLDs map[string][]sld.Pars
 
 		requiredColumnList := combinedRequirements.RequiredColumnList
 		requiredMappingValues := combinedRequirements.RequiredMappingValues
+		implicitFilteredValues := combinedRequirements.ImplicitFilteredValues
 
-		buildColumnList(table, newTable, requiredColumnList, m.allowResearch, m.requiredColumnTypes)
+		buildColumnList(table, newTable, requiredColumnList, m.allowResearch, useAllMappingTypes, m.requiredColumnTypes, implicitFilteredValues)
 
 		if len(requiredMappingValues) > 0 && (!useAllMappingTypes || m.forceFiltering) {
 			buildMappingValueList(table, newTable, requiredMappingValues, m.allowResearch)
@@ -207,7 +208,7 @@ func (m *mappingParser) RebuildMappingStructure(parsedSLDs map[string][]sld.Pars
 			newTable.Mappings = table.Mappings
 		}
 
-		newMappingRoot.Tabels[tableName] = *newTable
+		newMappingRoot.Tables[tableName] = *newTable
 
 		fmt.Println("")
 	}
@@ -295,6 +296,13 @@ func appendRequirements(source *sld.TableRequirements, new sld.ParsedSLD) {
 			source.RequiredMappingValues = append(source.RequiredMappingValues, value)
 		}
 	}
+
+	//add all found implicit filtered values
+	for _, value := range new.Requirements.ImplicitFilteredValues {
+		if !functions.StringInSlice(value, source.ImplicitFilteredValues) {
+			source.ImplicitFilteredValues = append(source.ImplicitFilteredValues, value)
+		}
+	}
 }
 
 //getter setter
@@ -307,11 +315,11 @@ func (m *mappingParser) GetTableNames() []string {
 		m.GetMappingContent()
 	}
 
-	var tables []string = make([]string, len(m.mappingRoot.Tabels))
+	var tables []string = make([]string, len(m.mappingRoot.Tables))
 
 	var tableIndex = 0
 
-	for key := range m.mappingRoot.Tabels {
+	for key := range m.mappingRoot.Tables {
 		tables[tableIndex] = key
 		tableIndex++
 	}
@@ -352,7 +360,7 @@ func (m *mappingParser) GetGeneralizedRootSourceTable(genTabelName string) strin
 }
 
 func (m *mappingParser) RemoveTableFromRoot(tableName string) {
-	delete(m.mappingRoot.Tabels, tableName)
+	delete(m.mappingRoot.Tables, tableName)
 }
 
 func (m *mappingParser) RemoveGeneralizedTableFromRoot(genTableName string) {
@@ -428,7 +436,7 @@ func guessColumnType(literals []string) string {
 	return "string"
 }
 
-func buildColumnList(rootTable Table, newTable *Table, requiredColumnList []sld.RequiredColumn, allowResearch bool, requiredColumnTypes []string) {
+func buildColumnList(rootTable Table, newTable *Table, requiredColumnList []sld.RequiredColumn, allowResearch bool, useAllMappingTypes bool, requiredColumnTypes []string, implicitFilteredValues []string) {
 	if len(requiredColumnList) > 0 {
 
 		newTable.Columns = make([]TableColumn, 0)
@@ -476,6 +484,17 @@ func buildColumnList(rootTable Table, newTable *Table, requiredColumnList []sld.
 			}
 		}
 
+		if !useAllMappingTypes {
+			for _, implicitFilteredValue := range implicitFilteredValues {
+
+				splitLable := strings.Split(implicitFilteredValue, ":")
+
+				key := splitLable[0]
+				value := splitLable[1]
+
+				newTable.Filter.Reject[key] = append(newTable.Filter.Reject[key], value)
+			}
+		}
 	} else {
 		newTable.Columns = rootTable.Columns
 	}
@@ -604,17 +623,28 @@ func (m *mappingParser) getRelatedGeneralizedTables(tableName string) []string {
 	return foundGenTable
 }
 
-func generateSQLFilter(mappingColumns sld.MappingColumnNames, requiredColumnList []sld.RequiredColumn, requiredMappingValues []string, oldSQLFilter string, useAllMappingTypes bool) string {
+func generateSQLFilter(mappingColumns sld.MappingColumnNames,
+	requiredColumnList []sld.RequiredColumn,
+	requiredMappingValues []string,
+	oldSQLFilter string,
+	useAllMappingTypes bool) string {
+
+	//New SQL-Filter
 	filter := ""
 
+	//No filter can be created if the table cannot be filtered explicitly.
 	if !useAllMappingTypes {
 
+		//If the MappingValueColumnName is in the requiredColumnList,
+		//the new filter is generated, if not then the old filter is used.
 		found, _ := sld.ColumnInColumnlist(mappingColumns.MappingValueColumnName, requiredColumnList)
 
 		if found && len(requiredMappingValues) > 0 {
 
+			//Set column name before IN operator
 			filter = mappingColumns.MappingValueColumnName + " IN ("
 
+			//Add each literal separated by commas
 			for i, mappingValue := range requiredMappingValues {
 				if i > 0 {
 					filter = filter + ", '" + mappingValue + "'"
@@ -623,13 +653,16 @@ func generateSQLFilter(mappingColumns sld.MappingColumnNames, requiredColumnList
 				}
 			}
 
+			//Close enumeration with )
 			filter = filter + ")"
 		}
 
-		if oldSQLFilter != "" {
+		if oldSQLFilter != "" && filter != "" {
+			//Minimize the old filter so that only unused filter statements are left
 			oldSQLFilter = discardMappingValueFilter(oldSQLFilter, mappingColumns)
 
 			if oldSQLFilter != "" {
+				//Append old filter to the new SQL filter
 				filter = filter + " AND " + oldSQLFilter
 			}
 		}

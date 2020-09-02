@@ -10,7 +10,7 @@
     ],
     "force_filtering": false,
     "allow_research": true,
-    "tolerance_scaling": 10.0,
+    "tolerance_scaling": 0.1,
     "tables": {
         "admin": [
             "test/osm_admin.sld"

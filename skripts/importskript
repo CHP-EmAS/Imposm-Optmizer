@@ -1,0 +1,22 @@
+#!/bin/bash
+
+#read arguments
+db_name=$1
+pbf_path=$2
+mapping_path=$3
+
+#create database with extensions
+echo "Erstelle Datenbank $db_name ..."
+createdb -E UTF8 -O clemens $db_name
+psql -d $db_name -c "CREATE EXTENSION postgis;"
+psql -d $db_name -c "CREATE EXTENSION hstore;"
+
+#start import
+echo "Importiere Daten von $pbf_path ..."
+./imposm import -mapping $mapping_path -read $pbf_path -overwritecache
+./imposm import -mapping $mapping_path -write -connection postgis://clemens:test@localhost/$db_name
+
+# bash importSkript default_germany   germany-latest.osm.pbf              default_mapping.yaml
+# bash importSkript default_bw        baden-wuerttemberg-latest.osm.pbf   default_mapping.yaml
+# bash importSkript optimized_germany germany-latest.osm.pbf              optimized_mapping.yaml
+# bash importSkript optimized_bw      baden-wuerttemberg-latest.osm.pbf   optimized_mapping.yaml

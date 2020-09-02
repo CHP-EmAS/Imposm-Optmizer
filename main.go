@@ -1,10 +1,10 @@
 package main
 
 import (
-	"ConverterX/configuration"
-	"ConverterX/mapping"
-	"ConverterX/sld"
-	functions "ConverterX/std_functions"
+	"Imposm_Optimizer/configuration"
+	"Imposm_Optimizer/mapping"
+	"Imposm_Optimizer/sld"
+	functions "Imposm_Optimizer/std_functions"
 	"container/list"
 	"errors"
 	"fmt"
@@ -204,6 +204,7 @@ func main() {
 
 	if err != nil {
 		fmt.Println("Error: " + err.Error())
+		return
 	}
 
 	return
